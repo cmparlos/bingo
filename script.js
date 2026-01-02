@@ -85,8 +85,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const STATE_KEY = `bingo-state-${gameId}`;
     const FREQ_KEY = `bingo-frequency-${gameId}`;
 
-    // Cloud Sync Configuration (Using ntfy.sh - highly compatible and CORS friendly)
-    const TOPIC = `bingo_v2_2026_${gameId}`;
+    // Cloud Sync Configuration (Using ntfy.sh - optimized with SSE to avoid 429)
+    const TOPIC = `bingo_pro_sync_v6_${gameId}`;
     const CLOUD_URL = `https://ntfy.sh/${TOPIC}`;
     let numbers = [];
     let drawnNumbers = [];
@@ -588,35 +588,65 @@ document.addEventListener('DOMContentLoaded', () => {
         initGrid();
         updateFrequencyUI();
 
-        // Wait for cloud state to be loaded before deciding to reset or resume
+        // 1. Load existing state (Local/Cloud)
         await loadGameState();
 
-        // Viewers poll cloud for real-time updates across devices
         if (isViewer) {
-            setInterval(() => {
-                loadGameState();
-            }, 3000); // Check for new numbers every 3 seconds
-        }
-
-        // Only shuffle if it's a completely fresh start
-        if (drawnHistory.length === 0) {
-            numbers = Array.from({ length: 90 }, (_, i) => i + 1);
-            resetGame(true);
+            // 2. Viewers connect to real-time events
+            setupRealtimeConnection();
         } else {
-            // Reconstruct 'numbers' (those remaining)
-            numbers = Array.from({ length: 90 }, (_, i) => i + 1)
-                .filter(n => !drawnHistory.includes(n));
+            // 2. Administrator logic: Resume or Fresh Start
+            if (drawnHistory.length === 0) {
+                numbers = Array.from({ length: 90 }, (_, i) => i + 1);
+                resetGame(true);
+            } else {
+                // Reconstruct 'numbers' (those remaining) and shuffle
+                numbers = Array.from({ length: 90 }, (_, i) => i + 1)
+                    .filter(n => !drawnHistory.includes(n));
 
-            // Shuffle remaining
-            for (let i = numbers.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
+                for (let i = numbers.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
+                }
             }
         }
 
         // Final UI sync
         updateGridFromHistory();
         updateHistoryUI();
+    }
+
+    function setupRealtimeConnection() {
+        setSyncStatus('online', 'A ligar...');
+
+        // 1. Initial State Sync (Poll once)
+        loadGameState();
+
+        // 2. Real-time Listen (EventSource / SSE)
+        // This is much more efficient than polling and avoids 429 errors
+        const eventSource = new EventSource(CLOUD_URL + '/sse');
+
+        eventSource.onopen = () => {
+            setSyncStatus('online', 'Ligado (Live)');
+        };
+
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.event === 'message' && data.message.startsWith('{')) {
+                    const cloudState = JSON.parse(data.message);
+                    applyState(cloudState);
+                    setSyncStatus('online', 'Dados recebidos');
+                }
+            } catch (err) {
+                console.error("Error parsing realtime message:", err);
+            }
+        };
+
+        eventSource.onerror = () => {
+            setSyncStatus('offline', 'Ligação perdida. A tentar...');
+            // EventSource handles reconnection automatically
+        };
     }
 
     init();
