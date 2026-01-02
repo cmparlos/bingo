@@ -492,6 +492,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         shareLinkInput.value = shareLink;
         qrCodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shareLink)}`;
+
+        // Hide warning if already hosted (not file://)
+        const hostWarning = document.getElementById('hosting-warning');
+        if (hostWarning) {
+            hostWarning.style.display = window.location.protocol === 'file:' ? 'block' : 'none';
+        }
+
         shareModal.classList.remove('hidden');
     });
 
