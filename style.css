@@ -793,6 +793,21 @@ body.viewer-mode .admin-only {
     background: rgba(0, 0, 0, 0.2);
 }
 
+.hosting-warning {
+    background: rgba(255, 165, 0, 0.1);
+    border: 1px solid rgba(255, 165, 0, 0.3);
+    color: orange;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    margin: 10px 0;
+    line-height: 1.4;
+}
+
+.hosting-warning i {
+    margin-right: 5px;
+}
+
 @keyframes fall {
     to {
         transform: translateY(100vh) rotate(360deg);
