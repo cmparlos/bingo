@@ -86,8 +86,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const FREQ_KEY = `bingo-frequency-${gameId}`;
 
     // Cloud Sync Configuration (Using ntfy.sh - optimized with SSE to avoid 429)
-    const TOPIC = `bingo_pro_sync_v6_${gameId}`;
+    const TOPIC = `bingo_ultra_sync_v7_${gameId}`;
     const CLOUD_URL = `https://ntfy.sh/${TOPIC}`;
+    let pushTimeout = null;
     let numbers = [];
     let drawnNumbers = [];
     let drawnHistory = [];
@@ -244,9 +245,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const stateStr = JSON.stringify(gameState);
         localStorage.setItem(STATE_KEY, stateStr);
 
-        // Push to Cloud (Only for Administrator)
+        // Push to Cloud (Only for Administrator + Debounced)
         if (!isViewer) {
-            pushToCloud(stateStr);
+            if (pushTimeout) clearTimeout(pushTimeout);
+            pushTimeout = setTimeout(() => {
+                pushToCloud(stateStr);
+            }, 1000); // 1.0 second debounce to prevent 429
         }
     }
 
@@ -265,49 +269,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             console.error("Cloud push failed:", e);
             setSyncStatus('offline', 'Falha na rede');
-        }
-    }
-
-    async function loadGameState() {
-        try {
-            // 1. Local Storage fallback (rápido)
-            const localSavedState = localStorage.getItem(STATE_KEY);
-            if (localSavedState && !isViewer) {
-                applyState(JSON.parse(localSavedState));
-            }
-
-            // 2. Cloud Sync (essencial para visualizadores)
-            setSyncStatus('syncing', 'A carregar da nuvem...');
-            // ntfy.sh /json?poll=1 returns the last message immediately
-            const response = await fetch(CLOUD_URL + '/json?poll=1');
-            if (response.ok) {
-                const text = await response.text();
-                const lines = text.trim().split('\n');
-
-                // Pegamos na última mensagem válida (evento 'message')
-                let foundState = null;
-                for (let i = lines.length - 1; i >= 0; i--) {
-                    try {
-                        const event = JSON.parse(lines[i]);
-                        if (event.event === 'message' && event.message.startsWith('{')) {
-                            foundState = JSON.parse(event.message);
-                            break;
-                        }
-                    } catch (err) { continue; }
-                }
-
-                if (foundState) {
-                    applyState(foundState);
-                    setSyncStatus('online', 'Dados carregados');
-                } else {
-                    setSyncStatus('online', 'Pronto');
-                }
-            } else {
-                setSyncStatus('offline', `Erro HTTP: ${response.status}`);
-            }
-        } catch (e) {
-            console.error("Cloud load failed:", e);
-            setSyncStatus('offline', 'Erro de ligação');
         }
     }
 
@@ -588,14 +549,17 @@ document.addEventListener('DOMContentLoaded', () => {
         initGrid();
         updateFrequencyUI();
 
-        // 1. Load existing state (Local/Cloud)
-        await loadGameState();
-
+        // Initialize Cloud Connection
         if (isViewer) {
-            // 2. Viewers connect to real-time events
             setupRealtimeConnection();
         } else {
-            // 2. Administrator logic: Resume or Fresh Start
+            // Administrator logic: Apply local cache immediately
+            const localSavedState = localStorage.getItem(STATE_KEY);
+            if (localSavedState) {
+                applyState(JSON.parse(localSavedState));
+            }
+
+            // Resume or Fresh Start
             if (drawnHistory.length === 0) {
                 numbers = Array.from({ length: 90 }, (_, i) => i + 1);
                 resetGame(true);
@@ -619,12 +583,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function setupRealtimeConnection() {
         setSyncStatus('online', 'A ligar...');
 
-        // 1. Initial State Sync (Poll once)
-        loadGameState();
-
-        // 2. Real-time Listen (EventSource / SSE)
-        // This is much more efficient than polling and avoids 429 errors
-        const eventSource = new EventSource(CLOUD_URL + '/sse');
+        // EventSource with since=all handles both initial load and live updates
+        // This is 100% event-driven and avoids rate limits
+        const eventSource = new EventSource(CLOUD_URL + '/sse?since=all');
 
         eventSource.onopen = () => {
             setSyncStatus('online', 'Ligado (Live)');
@@ -645,9 +606,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         eventSource.onerror = () => {
             setSyncStatus('offline', 'Ligação perdida. A tentar...');
-            // EventSource handles reconnection automatically
         };
     }
+
+    // Expose game functions to global scope for HTML onclick availability
+    window.game = {
+        toggle: toggleStatus
+    };
 
     init();
 });
