@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="pt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bingo Master | Manager Premium</title>
+    <meta name="description"
+        content="Gestor de Bingo Português Premium. Controle jogadores, sorteie números de 1 a 90 e registe vencedores com elegância.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="stars"></div>
+    <div class="container">
+        <header>
+            <div class="header-top">
+                <h1 class="glow-text">BINGO <span class="highlight">MASTER</span></h1>
+                <div class="header-actions">
+                    <button id="share-btn" class="btn-icon" title="Partilhar Jogo"><i
+                            class="fa-solid fa-share-nodes"></i></button>
+                    <div class="theme-switch-wrapper">
+                        <label class="theme-switch" for="checkbox">
+                            <input type="checkbox" id="checkbox" />
+                            <div class="slider round">
+                                <span class="icon-sun"><i class="fa-regular fa-lightbulb"></i></span>
+                                <span class="icon-moon"><i class="fa-regular fa-moon"></i></span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <p class="subtitle">Gestor de Jogo Profissional (1-90)</p>
+        </header>
+
+        <main class="bingo-layout">
+            <!-- Left Side: Draw Area -->
+            <section class="draw-container">
+                <div class="glass-card main-draw-card">
+                    <div class="current-number-wrapper">
+                        <div id="last-number" class="big-number">-</div>
+                        <p>Último Número</p>
+                    </div>
+                    <div class="draw-controls admin-only">
+                        <button id="next-btn" class="btn primary">Próximo Número</button>
+                        <button id="new-game-btn" class="btn tertiary">Novo Jogo</button>
+                    </div>
+
+                    <div class="extra-controls admin-only">
+                        <div class="voice-control">
+                            <label class="switch-control">
+                                <input type="checkbox" id="voice-toggle" checked>
+                                <span class="slider-toggle"></span>
+                            </label>
+                            <span><i class="fa-solid fa-volume-high"></i> Voz</span>
+                        </div>
+
+                        <div class="auto-draw-control">
+                            <div class="input-inline">
+                                <input type="number" id="auto-interval" value="5" min="1" max="60">
+                                <span>seg</span>
+                            </div>
+                            <button id="auto-btn" class="btn-icon circle"><i class="fa-solid fa-play"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card grid-card">
+                    <h3>Números Sorteados</h3>
+                    <div id="bingo-grid" class="bingo-grid">
+                        <!-- Numbers 1-90 -->
+                    </div>
+                </div>
+
+                <div class="glass-card history-drawn-card">
+                    <h3>Sequência de Saída</h3>
+                    <div id="draw-history-list" class="draw-history-list">
+                        <!-- Drawn numbers will appear here in order -->
+                        <p class="empty-msg">Nenhum número sorteado ainda.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Side: Players Area -->
+            <section class="players-container">
+                <div class="glass-card player-form-card admin-only">
+                    <h3>Adicionar Jogador</h3>
+                    <div class="input-group">
+                        <input type="text" id="player-name" placeholder="Nome do jogador..." autocomplete="off">
+                        <button id="add-player-btn" class="btn secondary">Adicionar</button>
+                    </div>
+                </div>
+
+                <div class="glass-card player-list-card">
+                    <h3>Painel de Jogadores</h3>
+                    <div id="players-list" class="players-list">
+                        <!-- Players will appear here -->
+                    </div>
+                </div>
+
+                <div class="glass-card history-card">
+                    <h3>Estatísticas dos Jogadores</h3>
+                    <div class="table-container">
+                        <table id="stats-table">
+                            <thead>
+                                <tr>
+                                    <th>Jogador</th>
+                                    <th>Linhas</th>
+                                    <th>Bingos</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Stats will be dynamically updated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="glass-card global-stats-card">
+                    <div class="card-header-flex">
+                        <h3>Frequência dos Números</h3>
+                        <button id="full-reset-btn" class="btn-text admin-only" title="Reiniciar Todas as Estatísticas">
+                            <i class="fa-solid fa-rotate"></i> Reset Total
+                        </button>
+                    </div>
+                    <div id="frequency-grid" class="frequency-grid">
+                        <!-- Frequency of 1-90 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2025 Bingo Master. Diversão Garantida.</p>
+        </footer>
+    </div>
+
+    <!-- Notification / Winner Overlay -->
+    <div id="winner-overlay" class="overlay hidden">
+        <div class="overlay-content glass-card">
+            <h2 id="winner-title">BINGO!</h2>
+            <p id="winner-text"></p>
+            <button id="close-overlay" class="btn primary">Continuar</button>
+        </div>
+    </div>
+
+    <!-- Share Modal -->
+    <div id="share-modal" class="overlay hidden">
+        <div class="overlay-content glass-card">
+            <h2>Partilhar Jogo</h2>
+            <p>Os outros podem entrar para ver o jogo em tempo real.</p>
+            <div class="qr-container">
+                <img id="qr-code" src="" alt="QR Code do Jogo">
+            </div>
+            <div class="input-group">
+                <input type="text" id="share-link" readonly>
+                <button id="copy-link-btn" class="btn secondary">Copiar</button>
+            </div>
+            <button id="close-share" class="btn primary">Fechar</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+
+</html>
