@@ -180,6 +180,14 @@ input:checked+.slider:before {
     letter-spacing: 2px;
 }
 
+.subtitle-small {
+    font-size: 0.8rem;
+    opacity: 0.5;
+    letter-spacing: 1px;
+    margin-top: -10px;
+    display: block;
+}
+
 /* Layout Grid */
 .bingo-layout {
     display: grid;
@@ -427,9 +435,43 @@ input[type="text"]:focus {
     opacity: 0.6;
 }
 
-.player-actions {
+/* Header adjustments */
+.header-main {
     display: flex;
-    gap: 0.5rem;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.sync-dot {
+    width: 10px;
+    height: 10px;
+    background: #555;
+    border-radius: 50%;
+    margin-right: 15px;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+    transition: background 0.3s, box-shadow 0.3s;
+}
+
+.sync-dot.online {
+    background: #4cd137;
+    box-shadow: 0 0 10px #4cd137;
+}
+
+.sync-dot.syncing {
+    background: #fbc531;
+    box-shadow: 0 0 10px #fbc531;
+}
+
+.sync-dot.offline {
+    background: #e84118;
+    box-shadow: 0 0 10px #e84118;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
 }
 
 .btn-status {

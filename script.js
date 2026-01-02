@@ -32,6 +32,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Frequency Tracking
     const frequencyGrid = document.getElementById('frequency-grid');
     const fullResetBtn = document.getElementById('full-reset-btn');
+    const syncDot = document.getElementById('sync-indicator');
+
+    function setSyncStatus(status) {
+        if (!syncDot) return;
+        syncDot.className = 'sync-dot ' + status;
+    }
 
     // Theme Toggle Logic avec Switch
     themeCheckbox.addEventListener('change', (e) => {
@@ -71,9 +77,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const STATE_KEY = `bingo-state-${gameId}`;
     const FREQ_KEY = `bingo-frequency-${gameId}`;
 
-    // Cloud Sync Configuration (Public KV Store)
-    const BUCKET = 'bingo_master_pt_2026'; // Public bucket for cloud sync
-    const CLOUD_URL = `https://kvdb.io/${BUCKET}/${gameId}`;
+    // Cloud Sync Configuration (Public KeyValue API)
+    // Usamos um prefixo para garantir que não colidimos com outros apps
+    const CLOUD_PREFIX = 'bingo_master_2026_';
+    const CLOUD_URL = `https://api.keyvalue.xyz/28362837/${CLOUD_PREFIX}${gameId}`;
     let numbers = [];
     let drawnNumbers = [];
     let drawnHistory = [];
@@ -237,34 +244,49 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function pushToCloud(data) {
+        setSyncStatus('syncing');
         try {
-            await fetch(CLOUD_URL, {
+            const response = await fetch(CLOUD_URL, {
                 method: 'POST',
                 body: data
             });
+            if (response.ok) {
+                setSyncStatus('online');
+            } else {
+                setSyncStatus('offline');
+            }
         } catch (e) {
-            console.warn("Cloud sync failed (offline?), using local storage only.");
+            console.warn("Cloud sync failed (CORS or network error).");
+            setSyncStatus('offline');
         }
     }
 
     async function loadGameState() {
         try {
-            // 1. Try Local Storage first (fastest for same-browser)
+            // 1. Try Local Storage first
             const localSavedState = localStorage.getItem(STATE_KEY);
             if (localSavedState) {
                 applyState(JSON.parse(localSavedState));
             }
 
-            // 2. Try Cloud (essential for viewers and cross-device)
+            // 2. Try Fetching from Cloud
             const response = await fetch(CLOUD_URL);
             if (response.ok) {
                 const cloudData = await response.text();
-                if (cloudData) {
+                // Check if it's empty or just the ID itself (some services return the key on 404)
+                if (cloudData && cloudData.startsWith('{')) {
                     applyState(JSON.parse(cloudData));
+                    setSyncStatus('online');
                 }
+            } else if (response.status === 404) {
+                // Not found is fine for new games
+                setSyncStatus('online');
+            } else {
+                setSyncStatus('offline');
             }
         } catch (e) {
             console.error("Error loading state:", e);
+            setSyncStatus('offline');
         }
     }
 
@@ -533,39 +555,41 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    window.game = {
-        toggle: toggleStatus
-    };
-
     // Init
-    initGrid();
-    updateFrequencyUI();
-    loadGameState(); // Attempt to load initial state (Local + Cloud)
+    async function init() {
+        initGrid();
+        updateFrequencyUI();
 
-    // Viewers poll cloud for real-time updates across devices
-    if (isViewer) {
-        setInterval(() => {
-            loadGameState();
-        }, 3000); // Check for new numbers every 3 seconds
-    }
+        // Wait for cloud state to be loaded before deciding to reset or resume
+        await loadGameState();
 
-    // Only shuffle if it's a completely fresh start
-    if (drawnHistory.length === 0) {
-        numbers = Array.from({ length: 90 }, (_, i) => i + 1);
-        resetGame(true);
-    } else {
-        // Reconstruct 'numbers' (those remaining)
-        numbers = Array.from({ length: 90 }, (_, i) => i + 1)
-            .filter(n => !drawnHistory.includes(n));
-
-        // Shuffle remaining
-        for (let i = numbers.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
+        // Viewers poll cloud for real-time updates across devices
+        if (isViewer) {
+            setInterval(() => {
+                loadGameState();
+            }, 3000); // Check for new numbers every 3 seconds
         }
+
+        // Only shuffle if it's a completely fresh start
+        if (drawnHistory.length === 0) {
+            numbers = Array.from({ length: 90 }, (_, i) => i + 1);
+            resetGame(true);
+        } else {
+            // Reconstruct 'numbers' (those remaining)
+            numbers = Array.from({ length: 90 }, (_, i) => i + 1)
+                .filter(n => !drawnHistory.includes(n));
+
+            // Shuffle remaining
+            for (let i = numbers.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
+            }
+        }
+
+        // Final UI sync
+        updateGridFromHistory();
+        updateHistoryUI();
     }
 
-    // Force one more UI sync
-    updateGridFromHistory();
-    updateHistoryUI();
+    init();
 });
