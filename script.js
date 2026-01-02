@@ -113,7 +113,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         stopAutoDraw();
         updatePlayersList();
+        updateStatsTable();
         nextBtn.disabled = false;
+
+        saveGameState();
     }
 
     // Draw Next Number
@@ -153,6 +156,8 @@ document.addEventListener('DOMContentLoaded', () => {
         globalFrequency[nextNum] = (globalFrequency[nextNum] || 0) + 1;
         saveFrequency();
         updateFrequencyUI();
+
+        saveGameState();
     }
 
     function speakNumber(num) {
@@ -198,6 +203,66 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('bingo-frequency', JSON.stringify(globalFrequency));
     }
 
+    function saveGameState() {
+        const gameState = {
+            drawnNumbers,
+            drawnHistory,
+            players,
+            gameCount
+        };
+        localStorage.setItem('bingo-state', JSON.stringify(gameState));
+    }
+
+    function loadGameState() {
+        const savedState = localStorage.getItem('bingo-state');
+        if (savedState) {
+            const state = JSON.parse(savedState);
+            drawnNumbers = state.drawnNumbers || [];
+            drawnHistory = state.drawnHistory || [];
+            players = state.players || [];
+            gameCount = state.gameCount || 1;
+
+            // Update UI to match loaded state
+            updateGridFromHistory();
+            updateHistoryUI();
+            updatePlayersList();
+            updateStatsTable();
+
+            if (drawnHistory.length > 0) {
+                lastNumDisplay.textContent = drawnHistory[drawnHistory.length - 1];
+            } else {
+                lastNumDisplay.textContent = '-';
+            }
+        }
+    }
+
+    function updateGridFromHistory() {
+        // Reset Visually
+        document.querySelectorAll('.grid-num').forEach(el => {
+            el.classList.remove('active', 'last');
+        });
+
+        drawnHistory.forEach((num, index) => {
+            const gridEl = document.getElementById(`num-${num}`);
+            if (gridEl) {
+                gridEl.classList.add('active');
+                if (index === drawnHistory.length - 1) {
+                    gridEl.classList.add('last');
+                }
+            }
+        });
+
+        // Also update drawnNumbers list if needed for internal logic
+        drawnNumbers = [...drawnHistory];
+    }
+
+    // Listen for changes in other tabs
+    window.addEventListener('storage', (e) => {
+        if (e.key === 'bingo-state') {
+            loadGameState();
+        }
+    });
+
     // Player Management
     function addPlayer() {
         const name = playerNameInput.value.trim();
@@ -216,6 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
         playerNameInput.value = '';
         updatePlayersList();
         updateStatsTable();
+        saveGameState();
     }
 
     function toggleStatus(playerId, type) {
@@ -244,6 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         updatePlayersList();
+        saveGameState();
     }
 
     function updateStatsTable() {
@@ -414,6 +481,26 @@ document.addEventListener('DOMContentLoaded', () => {
     // Init
     initGrid();
     updateFrequencyUI();
-    numbers = Array.from({ length: 90 }, (_, i) => i + 1);
-    resetGame(true); // Initial setup without incrementing game count
+    loadGameState(); // Attempt to load state
+
+    // If we have history, we reconstructed 'numbers' in loadGameState (via logic below)
+    // If not, we start fresh
+    if (drawnHistory.length === 0) {
+        numbers = Array.from({ length: 90 }, (_, i) => i + 1);
+        resetGame(true);
+    } else {
+        // Reconstruct 'numbers' (those remaining)
+        numbers = Array.from({ length: 90 }, (_, i) => i + 1)
+            .filter(n => !drawnHistory.includes(n));
+
+        // Shuffle remaining
+        for (let i = numbers.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
+        }
+    }
+
+    // Force one more UI sync
+    updateGridFromHistory();
+    updateHistoryUI();
 });
