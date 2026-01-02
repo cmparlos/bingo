@@ -814,3 +814,27 @@ body.viewer-mode .admin-only {
         opacity: 0;
     }
 }
+
+.sync-debug-area {
+    margin-top: 15px;
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
+.sync-debug-note {
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.sync-debug-note.online {
+    color: #4cd137;
+}
+
+.sync-debug-note.syncing {
+    color: #fbc531;
+}
+
+.sync-debug-note.offline {
+    color: #e84118;
+}

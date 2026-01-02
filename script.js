@@ -34,9 +34,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const fullResetBtn = document.getElementById('full-reset-btn');
     const syncDot = document.getElementById('sync-indicator');
 
-    function setSyncStatus(status) {
+    function setSyncStatus(status, msg = "") {
         if (!syncDot) return;
         syncDot.className = 'sync-dot ' + status;
+        if (msg) console.log(`[Sync] ${status}: ${msg}`);
+
+        // Also show a small text note in the share modal if open
+        const syncNote = document.getElementById('sync-debug-note');
+        if (syncNote) {
+            syncNote.textContent = msg || (status === 'online' ? 'Ligado' : 'Desligado');
+            syncNote.className = 'sync-debug-note ' + status;
+        }
     }
 
     // Theme Toggle Logic avec Switch
@@ -77,10 +85,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const STATE_KEY = `bingo-state-${gameId}`;
     const FREQ_KEY = `bingo-frequency-${gameId}`;
 
-    // Cloud Sync Configuration (Public KeyValue API)
-    // Usamos um prefixo para garantir que não colidimos com outros apps
-    const CLOUD_PREFIX = 'bingo_master_2026_';
-    const CLOUD_URL = `https://api.keyvalue.xyz/28362837/${CLOUD_PREFIX}${gameId}`;
+    // Cloud Sync Configuration (Using ntfy.sh - highly compatible and CORS friendly)
+    const TOPIC = `bingo_v2_2026_${gameId}`;
+    const CLOUD_URL = `https://ntfy.sh/${TOPIC}`;
     let numbers = [];
     let drawnNumbers = [];
     let drawnHistory = [];
@@ -244,49 +251,63 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function pushToCloud(data) {
-        setSyncStatus('syncing');
+        setSyncStatus('syncing', 'A enviar dados...');
         try {
             const response = await fetch(CLOUD_URL, {
                 method: 'POST',
                 body: data
             });
             if (response.ok) {
-                setSyncStatus('online');
+                setSyncStatus('online', 'Sincronizado');
             } else {
-                setSyncStatus('offline');
+                setSyncStatus('offline', `Erro: ${response.status}`);
             }
         } catch (e) {
-            console.warn("Cloud sync failed (CORS or network error).");
-            setSyncStatus('offline');
+            console.error("Cloud push failed:", e);
+            setSyncStatus('offline', 'Falha na rede');
         }
     }
 
     async function loadGameState() {
         try {
-            // 1. Try Local Storage first
+            // 1. Local Storage fallback (rápido)
             const localSavedState = localStorage.getItem(STATE_KEY);
-            if (localSavedState) {
+            if (localSavedState && !isViewer) {
                 applyState(JSON.parse(localSavedState));
             }
 
-            // 2. Try Fetching from Cloud
-            const response = await fetch(CLOUD_URL);
+            // 2. Cloud Sync (essencial para visualizadores)
+            setSyncStatus('syncing', 'A carregar da nuvem...');
+            // ntfy.sh /json?poll=1 returns the last message immediately
+            const response = await fetch(CLOUD_URL + '/json?poll=1');
             if (response.ok) {
-                const cloudData = await response.text();
-                // Check if it's empty or just the ID itself (some services return the key on 404)
-                if (cloudData && cloudData.startsWith('{')) {
-                    applyState(JSON.parse(cloudData));
-                    setSyncStatus('online');
+                const text = await response.text();
+                const lines = text.trim().split('\n');
+
+                // Pegamos na última mensagem válida (evento 'message')
+                let foundState = null;
+                for (let i = lines.length - 1; i >= 0; i--) {
+                    try {
+                        const event = JSON.parse(lines[i]);
+                        if (event.event === 'message' && event.message.startsWith('{')) {
+                            foundState = JSON.parse(event.message);
+                            break;
+                        }
+                    } catch (err) { continue; }
                 }
-            } else if (response.status === 404) {
-                // Not found is fine for new games
-                setSyncStatus('online');
+
+                if (foundState) {
+                    applyState(foundState);
+                    setSyncStatus('online', 'Dados carregados');
+                } else {
+                    setSyncStatus('online', 'Pronto');
+                }
             } else {
-                setSyncStatus('offline');
+                setSyncStatus('offline', `Erro HTTP: ${response.status}`);
             }
         } catch (e) {
-            console.error("Error loading state:", e);
-            setSyncStatus('offline');
+            console.error("Cloud load failed:", e);
+            setSyncStatus('offline', 'Erro de ligação');
         }
     }
 
