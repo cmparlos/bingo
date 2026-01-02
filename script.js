@@ -89,6 +89,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const TOPIC = `bingo_ultra_sync_v7_${gameId}`;
     const CLOUD_URL = `https://ntfy.sh/${TOPIC}`;
     let pushTimeout = null;
+    let pushRetryCount = 0;
+    let sseRetryCount = 0;
+    const MAX_RETRIES = 10;
     let numbers = [];
     let drawnNumbers = [];
     let drawnHistory = [];
@@ -261,14 +264,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 method: 'POST',
                 body: data
             });
+
             if (response.ok) {
                 setSyncStatus('online', 'Sincronizado');
+                pushRetryCount = 0; // Reset counter on success
+            } else if (response.status === 429) {
+                handlePushRetry(data, "Limite atingido (429)");
             } else {
-                setSyncStatus('offline', `Erro: ${response.status}`);
+                handlePushRetry(data, `Erro: ${response.status}`);
             }
         } catch (e) {
             console.error("Cloud push failed:", e);
-            setSyncStatus('offline', 'Falha na rede');
+            handlePushRetry(data, 'Falha na rede');
+        }
+    }
+
+    function handlePushRetry(data, reason) {
+        if (pushRetryCount < MAX_RETRIES) {
+            pushRetryCount++;
+            const delay = Math.min(1000 * Math.pow(1.5, pushRetryCount), 10000); // Exponential backoff
+            setSyncStatus('offline', `${reason}. REENTRAR (${pushRetryCount}/${MAX_RETRIES}) em ${Math.round(delay / 1000)}s...`);
+
+            setTimeout(() => {
+                pushToCloud(data);
+            }, delay);
+        } else {
+            setSyncStatus('offline', `Sincronização falhou após ${MAX_RETRIES} tentativas.`);
         }
     }
 
@@ -589,6 +610,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         eventSource.onopen = () => {
             setSyncStatus('online', 'Ligado (Live)');
+            sseRetryCount = 0; // Reset counter on success
         };
 
         eventSource.onmessage = (event) => {
@@ -605,7 +627,17 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         eventSource.onerror = () => {
-            setSyncStatus('offline', 'Ligação perdida. A tentar...');
+            eventSource.close();
+            if (sseRetryCount < MAX_RETRIES) {
+                sseRetryCount++;
+                const delay = 2000; // Fixed delay for reconnection
+                setSyncStatus('offline', `Ligação perdida. REENTRAR (${sseRetryCount}/${MAX_RETRIES}) em 2s...`);
+                setTimeout(() => {
+                    setupRealtimeConnection();
+                }, delay);
+            } else {
+                setSyncStatus('offline', 'Impossível ligar à Cloud. Verifique a internet.');
+            }
         };
     }
 
