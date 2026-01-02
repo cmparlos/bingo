@@ -50,15 +50,30 @@ document.addEventListener('DOMContentLoaded', () => {
         themeCheckbox.checked = true;
     }
 
-    // Viewer Mode Detection
+    // Game ID Logic
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('view') === '1') {
-        document.body.classList.add('viewer-mode');
-        // If viewer, change subtitle
-        document.querySelector('.subtitle').textContent = 'Modo Visualizador (Tempo Real)';
+    let gameId = urlParams.get('id');
+    const isViewer = urlParams.get('view') === '1';
+
+    if (!gameId) {
+        gameId = Math.random().toString(36).substring(2, 9);
+        urlParams.set('id', gameId);
+        window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
     }
 
-    // State
+    // Viewer Mode Detection
+    if (isViewer) {
+        document.body.classList.add('viewer-mode');
+        document.querySelector('.subtitle').textContent = `Modo Visualizador (ID: ${gameId})`;
+    }
+
+    // Scoped Storage Keys
+    const STATE_KEY = `bingo-state-${gameId}`;
+    const FREQ_KEY = `bingo-frequency-${gameId}`;
+
+    // Cloud Sync Configuration (Public KV Store)
+    const BUCKET = 'bingo_master_pt_2026'; // Public bucket for cloud sync
+    const CLOUD_URL = `https://kvdb.io/${BUCKET}/${gameId}`;
     let numbers = [];
     let drawnNumbers = [];
     let drawnHistory = [];
@@ -68,7 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let autoDrawTimer = null;
     let isAutoDrawing = false;
 
-    let globalFrequency = JSON.parse(localStorage.getItem('bingo-frequency')) || {};
+    let globalFrequency = JSON.parse(localStorage.getItem(FREQ_KEY)) || {};
 
     // Initialize Grid 1-90
     function initGrid() {
@@ -170,6 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateHistoryUI() {
+        console.log("Updating History UI, items:", drawnHistory.length);
         if (drawnHistory.length === 0) {
             historyList.innerHTML = '<p class="empty-msg">Nenhum número sorteado ainda.</p>';
             return;
@@ -200,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function saveFrequency() {
-        localStorage.setItem('bingo-frequency', JSON.stringify(globalFrequency));
+        localStorage.setItem(FREQ_KEY, JSON.stringify(globalFrequency));
     }
 
     function saveGameState() {
@@ -208,31 +224,73 @@ document.addEventListener('DOMContentLoaded', () => {
             drawnNumbers,
             drawnHistory,
             players,
-            gameCount
+            gameCount,
+            globalFrequency
         };
-        localStorage.setItem('bingo-state', JSON.stringify(gameState));
+        const stateStr = JSON.stringify(gameState);
+        localStorage.setItem(STATE_KEY, stateStr);
+
+        // Push to Cloud (Only for Administrator)
+        if (!isViewer) {
+            pushToCloud(stateStr);
+        }
     }
 
-    function loadGameState() {
-        const savedState = localStorage.getItem('bingo-state');
-        if (savedState) {
-            const state = JSON.parse(savedState);
-            drawnNumbers = state.drawnNumbers || [];
-            drawnHistory = state.drawnHistory || [];
-            players = state.players || [];
-            gameCount = state.gameCount || 1;
+    async function pushToCloud(data) {
+        try {
+            await fetch(CLOUD_URL, {
+                method: 'POST',
+                body: data
+            });
+        } catch (e) {
+            console.warn("Cloud sync failed (offline?), using local storage only.");
+        }
+    }
 
-            // Update UI to match loaded state
-            updateGridFromHistory();
-            updateHistoryUI();
-            updatePlayersList();
-            updateStatsTable();
-
-            if (drawnHistory.length > 0) {
-                lastNumDisplay.textContent = drawnHistory[drawnHistory.length - 1];
-            } else {
-                lastNumDisplay.textContent = '-';
+    async function loadGameState() {
+        try {
+            // 1. Try Local Storage first (fastest for same-browser)
+            const localSavedState = localStorage.getItem(STATE_KEY);
+            if (localSavedState) {
+                applyState(JSON.parse(localSavedState));
             }
+
+            // 2. Try Cloud (essential for viewers and cross-device)
+            const response = await fetch(CLOUD_URL);
+            if (response.ok) {
+                const cloudData = await response.text();
+                if (cloudData) {
+                    applyState(JSON.parse(cloudData));
+                }
+            }
+        } catch (e) {
+            console.error("Error loading state:", e);
+        }
+    }
+
+    function applyState(state) {
+        if (!state) return;
+
+        drawnNumbers = state.drawnNumbers || [];
+        drawnHistory = state.drawnHistory || [];
+        players = state.players || [];
+        gameCount = state.gameCount || 1;
+
+        if (state.globalFrequency) {
+            globalFrequency = state.globalFrequency;
+        }
+
+        // Force UI updates
+        updateGridFromHistory();
+        updateHistoryUI();
+        updatePlayersList();
+        updateStatsTable();
+        updateFrequencyUI();
+
+        if (drawnHistory.length > 0) {
+            lastNumDisplay.textContent = drawnHistory[drawnHistory.length - 1];
+        } else {
+            lastNumDisplay.textContent = '-';
         }
     }
 
@@ -258,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Listen for changes in other tabs
     window.addEventListener('storage', (e) => {
-        if (e.key === 'bingo-state') {
+        if (e.key === STATE_KEY) {
             loadGameState();
         }
     });
@@ -407,6 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
     shareBtn.addEventListener('click', () => {
         const currentUrl = new URL(window.location.href);
         currentUrl.searchParams.set('view', '1');
+        currentUrl.searchParams.set('id', gameId);
         const shareLink = currentUrl.toString();
 
         shareLinkInput.value = shareLink;
@@ -481,10 +540,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Init
     initGrid();
     updateFrequencyUI();
-    loadGameState(); // Attempt to load state
+    loadGameState(); // Attempt to load initial state (Local + Cloud)
 
-    // If we have history, we reconstructed 'numbers' in loadGameState (via logic below)
-    // If not, we start fresh
+    // Viewers poll cloud for real-time updates across devices
+    if (isViewer) {
+        setInterval(() => {
+            loadGameState();
+        }, 3000); // Check for new numbers every 3 seconds
+    }
+
+    // Only shuffle if it's a completely fresh start
     if (drawnHistory.length === 0) {
         numbers = Array.from({ length: 90 }, (_, i) => i + 1);
         resetGame(true);
